@@ -103,27 +103,52 @@ export default function RoomScreen() {
     }
   };
 
-  const handleMarkAsPaid = (transactionId: string) => {
+  const handleMarkAsPaid = async (transactionId: string) => {
     Alert.alert(
       'Mark as Paid',
       'Are you sure you want to mark this transaction as settled?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Mark Paid', onPress: () => markAsPaid(transactionId) },
+        {
+          text: 'Mark Paid',
+          onPress: async () => {
+            try {
+              await markAsPaid(transactionId);
+              Alert.alert('Success', 'Transaction marked as paid');
+            } catch (error) {
+              console.error('Failed to mark as paid:', error);
+              Alert.alert(
+                'Error',
+                'Failed to mark transaction as paid. Please try again.'
+              );
+            }
+          },
+        },
       ]
     );
   };
 
-  const handleSettleAll = () => {
+  const handleSettleAll = async () => {
     Alert.alert(
       'Settle All Debts',
-      'This will mark all your pending transactions as settled. This action cannot be undone.',
+      'This will delete all your pending transactions. This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Settle All',
           style: 'destructive',
-          onPress: () => settleAll(),
+          onPress: async () => {
+            try {
+              await settleAll();
+              Alert.alert('Success', 'All transactions have been settled');
+            } catch (error) {
+              console.error('Failed to settle all:', error);
+              Alert.alert(
+                'Error',
+                'Failed to settle all transactions. Please try again.'
+              );
+            }
+          },
         },
       ]
     );
@@ -171,7 +196,7 @@ export default function RoomScreen() {
             try {
               await deleteRoom(id);
               Alert.alert('Success', 'Room deleted successfully');
-              router.back();
+              router.push('/(tabs)');
             } catch (error) {
               Alert.alert('Error', 'Failed to delete room');
             }
@@ -208,7 +233,7 @@ export default function RoomScreen() {
             try {
               await leaveRoom(id);
               Alert.alert('Success', 'You have left the room');
-              router.back();
+              router.push('/(tabs)');
             } catch (error) {
               Alert.alert('Error', 'Failed to leave room');
             }
@@ -351,9 +376,7 @@ export default function RoomScreen() {
           <View style={styles.transactionHeader}>
             <View style={styles.transactionInfo}>
               <View style={styles.transactionMeta}>
-                {item.status === 'settled' ? (
-                  <CheckCircle size={20} color="#10b981" />
-                ) : item.type === 'borrowed' ? (
+                {item.type === 'borrowed' ? (
                   <TrendingDown size={20} color="#ef4444" />
                 ) : item.type === 'lent' ? (
                   <TrendingUp size={20} color="#10b981" />
@@ -366,9 +389,7 @@ export default function RoomScreen() {
                     isDark && styles.transactionTypeDark,
                     {
                       color:
-                        item.status === 'settled'
-                          ? '#6b7280'
-                          : item.type === 'borrowed'
+                        item.type === 'borrowed'
                           ? '#ef4444'
                           : item.type === 'lent'
                           ? '#10b981'
@@ -419,31 +440,17 @@ export default function RoomScreen() {
             </Text>
           </View>
 
-          {item.status === 'pending' &&
-            (item.from_user_id === user?.id ||
-              item.to_user_id === user?.id) && (
-              <TouchableOpacity
-                style={[
-                  styles.markPaidButton,
-                  isDark && styles.markPaidButtonDark,
-                ]}
-                onPress={() => handleMarkAsPaid(item.id)}
-              >
-                <CheckCircle size={16} color="#10b981" />
-                <Text style={styles.markPaidText}>Mark as Paid</Text>
-              </TouchableOpacity>
-            )}
-
-          {item.status === 'settled' && (
-            <View style={styles.settledBadge}>
-              <CheckCircle size={14} color="#10b981" />
-              <Text style={styles.settledText}>
-                Settled{' '}
-                {item.settled_at
-                  ? new Date(item.settled_at).toLocaleDateString()
-                  : ''}
-              </Text>
-            </View>
+          {(item.from_user_id === user?.id || item.to_user_id === user?.id) && (
+            <TouchableOpacity
+              style={[
+                styles.markPaidButton,
+                isDark && styles.markPaidButtonDark,
+              ]}
+              onPress={() => handleMarkAsPaid(item.id)}
+            >
+              <CheckCircle size={16} color="#10b981" />
+              <Text style={styles.markPaidText}>Mark as Paid</Text>
+            </TouchableOpacity>
           )}
         </View>
       )}
@@ -461,8 +468,8 @@ export default function RoomScreen() {
           </Text>
           <TouchableOpacity
             style={[
-              styles.settleAllButton,
-              isDark && styles.settleAllButtonDark,
+              styles.settleAllButtonSmall,
+              isDark && styles.settleAllButtonSmallDark,
             ]}
             onPress={handleSettleAll}
           >
@@ -550,6 +557,17 @@ export default function RoomScreen() {
           </View>
         </View>
       ))}
+
+      {/* Settle All Button */}
+      {balances.length > 0 && (
+        <TouchableOpacity
+          style={[styles.settleAllButton, isDark && styles.settleAllButtonDark]}
+          onPress={handleSettleAll}
+        >
+          <CheckCircle size={20} color="#ffffff" />
+          <Text style={styles.settleAllButtonText}>Settle All Debts</Text>
+        </TouchableOpacity>
+      )}
     </ScrollView>
   );
 
@@ -569,7 +587,7 @@ export default function RoomScreen() {
     <SafeAreaView style={[styles.container, isDark && styles.containerDark]}>
       {/* Header */}
       <View style={[styles.header, isDark && styles.headerDark]}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => router.push('/(tabs)')}>
           <ArrowLeft size={24} color={isDark ? '#f9fafb' : '#111827'} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>
@@ -1263,7 +1281,7 @@ const styles = StyleSheet.create({
     color: '#10b981',
     fontWeight: '500',
   },
-  settleAllButton: {
+  settleAllButtonSmall: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
@@ -1272,7 +1290,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
   },
-  settleAllButtonDark: {
+  settleAllButtonSmallDark: {
     backgroundColor: '#064e3b',
   },
   settleAllText: {
@@ -1557,5 +1575,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#f59e0b',
+  },
+  settleAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 16,
+    backgroundColor: '#3b82f6',
+    borderRadius: 12,
+    marginTop: 16,
+    marginHorizontal: 16,
+  },
+  settleAllButtonDark: {
+    backgroundColor: '#1d4ed8',
+  },
+  settleAllButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
   },
 });

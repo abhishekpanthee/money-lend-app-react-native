@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { localStorage } from '@/lib/storage';
 import { useAuth } from './useAuth';
+import { sendTransactionNotification } from '@/lib/notifications';
 
 interface Transaction {
   id: string;
@@ -11,7 +12,7 @@ interface Transaction {
   description: string;
   from_user_id: string;
   to_user_id: string;
-  status: 'pending' | 'settled';
+  status: 'pending';
   settled_at: string | null;
   created_at: string;
   from_user?: { name: string; email: string };
@@ -24,33 +25,11 @@ export function useTransactions(roomId?: string) {
   const [loading, setLoading] = useState(false);
 
   const fetchTransactions = async () => {
-    if (!user || !roomId) return;
-
-    // Try to get cached transactions first
-    const cachedTransactions = await localStorage.getItem(
-      `transactions_${roomId}`
-    );
-    if (cachedTransactions) {
-      setTransactions(cachedTransactions);
-    }
+    if (!user) return;
 
     setLoading(true);
     try {
-      // First verify user has access to this room
-      const { data: roomAccess, error: roomError } = await supabase
-        .from('room_members')
-        .select('user_id')
-        .eq('room_id', roomId)
-        .eq('user_id', user.id)
-        .single();
-
-      if (roomError || !roomAccess) {
-        console.log('User does not have access to this room');
-        setTransactions([]);
-        return;
-      }
-
-      const { data, error } = await supabase
+      let query = supabase
         .from('transactions')
         .select(
           `
@@ -59,8 +38,45 @@ export function useTransactions(roomId?: string) {
           to_user:profiles!transactions_to_user_id_profiles_fkey(id, email, name, full_name)
         `
         )
-        .eq('room_id', roomId)
+        .or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`)
         .order('created_at', { ascending: false });
+
+      // If roomId is provided, filter by room
+      if (roomId) {
+        // Try to get cached transactions first
+        const cachedTransactions = await localStorage.getItem(
+          `transactions_${roomId}`
+        );
+        if (cachedTransactions) {
+          setTransactions(cachedTransactions);
+        }
+
+        // First verify user has access to this room
+        const { data: roomAccess, error: roomError } = await supabase
+          .from('room_members')
+          .select('user_id')
+          .eq('room_id', roomId)
+          .eq('user_id', user.id)
+          .single();
+
+        if (roomError || !roomAccess) {
+          console.log('User does not have access to this room');
+          setTransactions([]);
+          return;
+        }
+
+        query = query.eq('room_id', roomId);
+      } else {
+        // Try to get cached all transactions first
+        const cachedTransactions = await localStorage.getItem(
+          `all_transactions_${user.id}`
+        );
+        if (cachedTransactions) {
+          setTransactions(cachedTransactions);
+        }
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -85,11 +101,19 @@ export function useTransactions(roomId?: string) {
       setTransactions(formattedTransactions);
 
       // Cache the transactions data
-      await localStorage.setItem(
-        `transactions_${roomId}`,
-        formattedTransactions,
-        true
-      );
+      if (roomId) {
+        await localStorage.setItem(
+          `transactions_${roomId}`,
+          formattedTransactions,
+          true
+        );
+      } else {
+        await localStorage.setItem(
+          `all_transactions_${user.id}`,
+          formattedTransactions,
+          true
+        );
+      }
     } catch (error) {
       console.error('Error fetching transactions:', error);
       // If online fetch fails, keep cached data
@@ -120,6 +144,20 @@ export function useTransactions(roomId?: string) {
 
       if (error) throw error;
 
+      // Send push notification to the target user
+      try {
+        await sendTransactionNotification(roomId, {
+          amount: transactionData.amount,
+          type: transactionData.type,
+          description: transactionData.description,
+          fromUserName: user.user_metadata?.name || user.email || 'Someone',
+          toUserId: transactionData.target_user_id,
+        });
+      } catch (notificationError) {
+        console.warn('Failed to send notification:', notificationError);
+        // Don't throw - notification failure shouldn't break the transaction
+      }
+
       await fetchTransactions();
     } catch (error) {
       console.error('Error adding transaction:', error);
@@ -130,18 +168,30 @@ export function useTransactions(roomId?: string) {
   };
 
   const markAsPaid = async (transactionId: string) => {
+    if (!user) throw new Error('User not authenticated');
+
     setLoading(true);
     try {
-      const { error } = await supabase
+      console.log(
+        'Deleting transaction (marking as paid):',
+        transactionId,
+        'by user:',
+        user.id
+      );
+
+      const { data, error } = await supabase
         .from('transactions')
-        .update({
-          status: 'settled',
-          settled_at: new Date().toISOString(),
-        })
-        .eq('id', transactionId);
+        .delete()
+        .eq('id', transactionId)
+        .select()
+        .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
 
+      console.log('Transaction deleted successfully:', data);
       await fetchTransactions();
     } catch (error) {
       console.error('Error marking transaction as paid:', error);
@@ -159,10 +209,7 @@ export function useTransactions(roomId?: string) {
     try {
       let query = supabase
         .from('transactions')
-        .update({
-          status: 'settled',
-          settled_at: new Date().toISOString(),
-        })
+        .delete()
         .eq('room_id', roomId)
         .eq('status', 'pending');
 

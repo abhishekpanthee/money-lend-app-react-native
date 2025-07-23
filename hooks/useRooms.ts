@@ -254,30 +254,24 @@ export function useRooms() {
 
     setLoading(true);
     try {
-      // First delete all room members
-      const { error: membersError } = await supabase
-        .from('room_members')
-        .delete()
-        .eq('room_id', roomId);
+      console.log('Deleting room:', roomId, 'by user:', user.id);
 
-      if (membersError) throw membersError;
-
-      // Then delete all transactions for this room
-      const { error: transactionsError } = await supabase
-        .from('transactions')
-        .delete()
-        .eq('room_id', roomId);
-
-      if (transactionsError) throw transactionsError;
-
-      // Finally delete the room itself
-      const { error: roomError } = await supabase
+      // Since we have CASCADE DELETE foreign keys set up,
+      // we can just delete the room and let the database handle the rest
+      const { data, error } = await supabase
         .from('rooms')
         .delete()
         .eq('id', roomId)
-        .eq('created_by', user.id); // Only room creator can delete
+        .eq('created_by', user.id) // Only room creator can delete
+        .select()
+        .single();
 
-      if (roomError) throw roomError;
+      if (error) {
+        console.error('Supabase error deleting room:', error);
+        throw error;
+      }
+
+      console.log('Room deleted successfully:', data);
 
       // Refresh the rooms list
       await fetchRooms();

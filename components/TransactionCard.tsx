@@ -1,15 +1,22 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { CircleArrowUp as ArrowUpCircle, CircleArrowDown as ArrowDownCircle, Users, Check } from 'lucide-react-native';
+import {
+  CircleArrowUp as ArrowUpCircle,
+  CircleArrowDown as ArrowDownCircle,
+  Users,
+  Check,
+} from 'lucide-react-native';
 
 interface Transaction {
   id: string;
   amount: number;
   type: 'borrowed' | 'lent' | 'shared';
   description: string;
-  date: string;
+  created_at: string;
   status: 'pending' | 'settled';
-  settled_at?: string;
+  settled_at?: string | null;
+  from_user_id: string;
+  to_user_id: string;
   from_user?: { name: string };
   to_user?: { name: string };
 }
@@ -20,19 +27,23 @@ interface TransactionCardProps {
   currentUserId: string;
 }
 
-export default function TransactionCard({ 
-  transaction, 
-  onMarkAsPaid, 
-  currentUserId 
+export default function TransactionCard({
+  transaction,
+  onMarkAsPaid,
+  currentUserId,
 }: TransactionCardProps) {
   const getTransactionColor = () => {
     if (transaction.status === 'settled') return '#6b7280';
-    
+
     switch (transaction.type) {
-      case 'borrowed': return '#ef4444';
-      case 'lent': return '#10b981';
-      case 'shared': return '#3b82f6';
-      default: return '#6b7280';
+      case 'borrowed':
+        return '#ef4444';
+      case 'lent':
+        return '#10b981';
+      case 'shared':
+        return '#3b82f6';
+      default:
+        return '#6b7280';
     }
   };
 
@@ -40,7 +51,7 @@ export default function TransactionCard({
     if (transaction.status === 'settled') {
       return <Check size={20} color="#10b981" />;
     }
-    
+
     switch (transaction.type) {
       case 'borrowed':
         return <ArrowDownCircle size={20} color="#ef4444" />;
@@ -53,8 +64,10 @@ export default function TransactionCard({
     }
   };
 
-  const canMarkAsPaid = transaction.status === 'pending' && 
-    (transaction.from_user_id === currentUserId || transaction.to_user_id === currentUserId);
+  const canMarkAsPaid =
+    transaction.status === 'pending' &&
+    (transaction.from_user_id === currentUserId ||
+      transaction.to_user_id === currentUserId);
 
   return (
     <View style={styles.card}>
@@ -62,24 +75,26 @@ export default function TransactionCard({
         <View style={styles.transactionInfo}>
           <View style={styles.transactionMeta}>
             {getTransactionIcon()}
-            <Text style={[styles.transactionType, { color: getTransactionColor() }]}>
-              {transaction.type.charAt(0).toUpperCase() + transaction.type.slice(1)}
+            <Text
+              style={[styles.transactionType, { color: getTransactionColor() }]}
+            >
+              {transaction.type.charAt(0).toUpperCase() +
+                transaction.type.slice(1)}
             </Text>
           </View>
-          <Text style={styles.amount}>
-            ${transaction.amount.toFixed(2)}
-          </Text>
+          <Text style={styles.amount}>${transaction.amount.toFixed(2)}</Text>
         </View>
       </View>
-      
+
       <Text style={styles.description}>{transaction.description}</Text>
-      
+
       <View style={styles.details}>
         <Text style={styles.parties}>
-          {transaction.from_user?.name || 'You'} → {transaction.to_user?.name || 'User'}
+          {transaction.from_user?.name || 'You'} →{' '}
+          {transaction.to_user?.name || 'User'}
         </Text>
         <Text style={styles.date}>
-          {new Date(transaction.date).toLocaleDateString()}
+          {new Date(transaction.created_at).toLocaleDateString()}
         </Text>
       </View>
 
@@ -97,7 +112,10 @@ export default function TransactionCard({
         <View style={styles.settledBadge}>
           <Check size={14} color="#10b981" />
           <Text style={styles.settledText}>
-            Settled {transaction.settled_at ? new Date(transaction.settled_at).toLocaleDateString() : ''}
+            Settled{' '}
+            {transaction.settled_at
+              ? new Date(transaction.settled_at).toLocaleDateString()
+              : ''}
           </Text>
         </View>
       )}

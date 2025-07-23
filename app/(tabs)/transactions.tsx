@@ -10,7 +10,14 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Plus, CircleArrowUp as ArrowUpCircle, CircleArrowDown as ArrowDownCircle, Users, Check, Filter } from 'lucide-react-native';
+import {
+  Plus,
+  CircleArrowUp as ArrowUpCircle,
+  CircleArrowDown as ArrowDownCircle,
+  Users,
+  Check,
+  Filter,
+} from 'lucide-react-native';
 import { useTransactions } from '@/hooks/useTransactions';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -19,32 +26,33 @@ interface Transaction {
   amount: number;
   type: 'borrowed' | 'lent' | 'shared';
   description: string;
-  date: string;
+  created_at: string;
   from_user_id: string;
   to_user_id: string;
   room_id: string;
-  status: 'pending' | 'settled';
-  settled_at?: string;
+  status: 'pending';
+  settled_at?: string | null;
   from_user?: { name: string };
   to_user?: { name: string };
 }
 
 type TransactionType = 'borrowed' | 'lent' | 'shared';
-type FilterType = 'all' | 'pending' | 'settled';
+type FilterType = 'all' | 'pending';
 
 export default function TransactionsScreen() {
   const { user } = useAuth();
-  const { transactions, addTransaction, markAsPaid, loading } = useTransactions();
+  const { transactions, addTransaction, markAsPaid, loading } =
+    useTransactions();
   const [showAddModal, setShowAddModal] = useState(false);
-  const [filter, setFilter] = useState<FilterType>('all');
-  
+  const [filter, setFilter] = useState<FilterType>('pending');
+
   // Form state
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<TransactionType>('borrowed');
   const [description, setDescription] = useState('');
   const [targetUserId, setTargetUserId] = useState('');
 
-  const filteredTransactions = transactions.filter(transaction => {
+  const filteredTransactions = transactions.filter((transaction) => {
     if (filter === 'all') return true;
     return transaction.status === filter;
   });
@@ -83,21 +91,19 @@ export default function TransactionsScreen() {
   };
 
   const getTransactionColor = (transaction: Transaction) => {
-    if (transaction.status === 'settled') return '#6b7280';
-    
     switch (transaction.type) {
-      case 'borrowed': return '#ef4444';
-      case 'lent': return '#10b981';
-      case 'shared': return '#3b82f6';
-      default: return '#6b7280';
+      case 'borrowed':
+        return '#ef4444';
+      case 'lent':
+        return '#10b981';
+      case 'shared':
+        return '#3b82f6';
+      default:
+        return '#6b7280';
     }
   };
 
   const getTransactionIcon = (transaction: Transaction) => {
-    if (transaction.status === 'settled') {
-      return <Check size={20} color="#10b981" />;
-    }
-    
     switch (transaction.type) {
       case 'borrowed':
         return <ArrowDownCircle size={20} color="#ef4444" />;
@@ -120,7 +126,12 @@ export default function TransactionsScreen() {
         <View style={styles.transactionInfo}>
           <View style={styles.transactionMeta}>
             {getTransactionIcon(item)}
-            <Text style={[styles.transactionType, { color: getTransactionColor(item) }]}>
+            <Text
+              style={[
+                styles.transactionType,
+                { color: getTransactionColor(item) },
+              ]}
+            >
               {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
             </Text>
           </View>
@@ -129,36 +140,28 @@ export default function TransactionsScreen() {
           </Text>
         </View>
       </View>
-      
+
       <Text style={styles.transactionDescription}>{item.description}</Text>
-      
+
       <View style={styles.transactionDetails}>
         <Text style={styles.transactionParties}>
           {item.from_user?.name || 'You'} → {item.to_user?.name || 'User'}
         </Text>
         <Text style={styles.transactionDate}>
-          {new Date(item.date).toLocaleDateString()}
+          {new Date(item.created_at).toLocaleDateString()}
         </Text>
       </View>
 
-      {item.status === 'pending' && (item.from_user_id === user?.id || item.to_user_id === user?.id) && (
-        <TouchableOpacity
-          style={styles.markPaidButton}
-          onPress={() => handleMarkAsPaid(item.id)}
-        >
-          <Check size={16} color="#10b981" />
-          <Text style={styles.markPaidText}>Mark as Paid</Text>
-        </TouchableOpacity>
-      )}
-
-      {item.status === 'settled' && (
-        <View style={styles.settledBadge}>
-          <Check size={14} color="#10b981" />
-          <Text style={styles.settledText}>
-            Settled {item.settled_at ? new Date(item.settled_at).toLocaleDateString() : ''}
-          </Text>
-        </View>
-      )}
+      {item.status === 'pending' &&
+        (item.from_user_id === user?.id || item.to_user_id === user?.id) && (
+          <TouchableOpacity
+            style={styles.markPaidButton}
+            onPress={() => handleMarkAsPaid(item.id)}
+          >
+            <Check size={16} color="#10b981" />
+            <Text style={styles.markPaidText}>Mark as Paid</Text>
+          </TouchableOpacity>
+        )}
     </View>
   );
 
@@ -170,7 +173,7 @@ export default function TransactionsScreen() {
           <TouchableOpacity
             style={styles.filterButton}
             onPress={() => {
-              const filters: FilterType[] = ['all', 'pending', 'settled'];
+              const filters: FilterType[] = ['all', 'pending'];
               const currentIndex = filters.indexOf(filter);
               const nextIndex = (currentIndex + 1) % filters.length;
               setFilter(filters[nextIndex]);
@@ -214,28 +217,30 @@ export default function TransactionsScreen() {
               <Text style={styles.saveButton}>Add</Text>
             </TouchableOpacity>
           </View>
-          
+
           <View style={styles.modalContent}>
             <View style={styles.typeSelector}>
-              {(['borrowed', 'lent', 'shared'] as TransactionType[]).map((t) => (
-                <TouchableOpacity
-                  key={t}
-                  style={[
-                    styles.typeButton,
-                    type === t && styles.selectedTypeButton,
-                  ]}
-                  onPress={() => setType(t)}
-                >
-                  <Text
+              {(['borrowed', 'lent', 'shared'] as TransactionType[]).map(
+                (t) => (
+                  <TouchableOpacity
+                    key={t}
                     style={[
-                      styles.typeButtonText,
-                      type === t && styles.selectedTypeButtonText,
+                      styles.typeButton,
+                      type === t && styles.selectedTypeButton,
                     ]}
+                    onPress={() => setType(t)}
                   >
-                    {t.charAt(0).toUpperCase() + t.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Text
+                      style={[
+                        styles.typeButtonText,
+                        type === t && styles.selectedTypeButtonText,
+                      ]}
+                    >
+                      {t.charAt(0).toUpperCase() + t.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              )}
             </View>
 
             <View style={styles.inputGroup}>
@@ -262,8 +267,11 @@ export default function TransactionsScreen() {
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>
-                {type === 'borrowed' ? 'Borrowed from' : 
-                 type === 'lent' ? 'Lent to' : 'Shared with'}
+                {type === 'borrowed'
+                  ? 'Borrowed from'
+                  : type === 'lent'
+                  ? 'Lent to'
+                  : 'Shared with'}
               </Text>
               <TextInput
                 style={styles.input}
