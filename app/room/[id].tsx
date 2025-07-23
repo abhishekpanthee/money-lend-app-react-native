@@ -13,7 +13,21 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
-import { ArrowLeft, Plus, Users, Share, Settings, DollarSign, TrendingUp, TrendingDown, CircleCheck as CheckCircle, Clock, Filter } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  Plus,
+  Users,
+  Share,
+  Settings,
+  DollarSign,
+  TrendingUp,
+  TrendingDown,
+  CircleCheck as CheckCircle,
+  Clock,
+  Filter,
+  Trash2,
+  LogOut,
+} from 'lucide-react-native';
 import { useAuth } from '@/hooks/useAuth';
 import { useRooms } from '@/hooks/useRooms';
 import { useTransactions } from '@/hooks/useTransactions';
@@ -22,8 +36,8 @@ import { useSummary } from '@/hooks/useSummary';
 interface RoomMember {
   id: string;
   user_id: string;
-  user_email: string;
-  user_name: string;
+  user_email?: string;
+  user_name?: string;
   joined_at: string;
 }
 
@@ -32,22 +46,24 @@ export default function RoomScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const { user } = useAuth();
-  const { rooms, getRoomMembers } = useRooms();
+  const { rooms, getRoomMembers, deleteRoom, leaveRoom } = useRooms();
   const { transactions, addTransaction, markAsPaid } = useTransactions(id);
   const { balances, totals, settleAll } = useSummary(id);
-  
-  const [activeTab, setActiveTab] = useState<'overview' | 'transactions' | 'summary'>('overview');
+
+  const [activeTab, setActiveTab] = useState<
+    'overview' | 'transactions' | 'summary'
+  >('overview');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [members, setMembers] = useState<RoomMember[]>([]);
-  
+
   // Form state
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<'borrowed' | 'lent' | 'shared'>('borrowed');
   const [description, setDescription] = useState('');
   const [targetUserId, setTargetUserId] = useState('');
 
-  const room = rooms.find(r => r.id === id);
+  const room = rooms.find((r) => r.id === id);
 
   useEffect(() => {
     if (id) {
@@ -104,17 +120,101 @@ export default function RoomScreen() {
       'This will mark all your pending transactions as settled. This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Settle All', style: 'destructive', onPress: () => settleAll() },
+        {
+          text: 'Settle All',
+          style: 'destructive',
+          onPress: () => settleAll(),
+        },
       ]
     );
   };
 
   const shareInviteCode = () => {
-    if (!room) return;
+    if (!room) {
+      Alert.alert('Error', 'Room not found');
+      return;
+    }
+
+    if (!room.invite_code) {
+      Alert.alert('Error', 'Invite code not available for this room');
+      return;
+    }
+
     Alert.alert(
       'Invite Code',
       `Share this code with your roommates:\n\n${room.invite_code}`,
       [{ text: 'OK' }]
+    );
+  };
+
+  const handleDeleteRoom = () => {
+    if (!room || !id) {
+      Alert.alert('Error', 'Room not found');
+      return;
+    }
+
+    // Only allow room creator to delete
+    if (room.created_by !== user?.id) {
+      Alert.alert('Error', 'Only the room creator can delete this room');
+      return;
+    }
+
+    Alert.alert(
+      'Delete Room',
+      'Are you sure you want to delete this room? This will permanently delete all transactions and cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteRoom(id);
+              Alert.alert('Success', 'Room deleted successfully');
+              router.back();
+            } catch (error) {
+              Alert.alert('Error', 'Failed to delete room');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleLeaveRoom = () => {
+    if (!room || !id) {
+      Alert.alert('Error', 'Room not found');
+      return;
+    }
+
+    // Don't allow room creator to leave - they should delete instead
+    if (room.created_by === user?.id) {
+      Alert.alert(
+        'Error',
+        'Room creators cannot leave their own room. Please delete the room instead.'
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Leave Room',
+      'Are you sure you want to leave this room? You will no longer be able to see transactions or add new ones.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Leave',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await leaveRoom(id);
+              Alert.alert('Success', 'You have left the room');
+              router.back();
+            } catch (error) {
+              Alert.alert('Error', 'Failed to leave room');
+            }
+          },
+        },
+      ]
     );
   };
 
@@ -127,26 +227,29 @@ export default function RoomScreen() {
             Room Information
           </Text>
           <TouchableOpacity onPress={shareInviteCode}>
-            <Share size={20} color={isDark ? "#9ca3af" : "#6b7280"} />
+            <Share size={20} color={isDark ? '#9ca3af' : '#6b7280'} />
           </TouchableOpacity>
         </View>
         <Text style={[styles.roomName, isDark && styles.roomNameDark]}>
           {room?.name}
         </Text>
-        <Text style={[styles.roomDescription, isDark && styles.roomDescriptionDark]}>
+        <Text
+          style={[styles.roomDescription, isDark && styles.roomDescriptionDark]}
+        >
           {room?.description || 'No description'}
         </Text>
         <View style={styles.roomStats}>
           <View style={styles.statItem}>
-            <Users size={16} color={isDark ? "#9ca3af" : "#6b7280"} />
+            <Users size={16} color={isDark ? '#9ca3af' : '#6b7280'} />
             <Text style={[styles.statText, isDark && styles.statTextDark]}>
               {members.length} members
             </Text>
           </View>
           <View style={styles.statItem}>
-            <Clock size={16} color={isDark ? "#9ca3af" : "#6b7280"} />
+            <Clock size={16} color={isDark ? '#9ca3af' : '#6b7280'} />
             <Text style={[styles.statText, isDark && styles.statTextDark]}>
-              {transactions.filter(t => t.status === 'pending').length} pending
+              {transactions.filter((t) => t.status === 'pending').length}{' '}
+              pending
             </Text>
           </View>
         </View>
@@ -177,13 +280,18 @@ export default function RoomScreen() {
           <Text style={[styles.netLabel, isDark && styles.netLabelDark]}>
             Net Balance
           </Text>
-          <Text style={[
-            styles.netAmount,
-            { color: totals.netBalance >= 0 ? '#10b981' : '#ef4444' }
-          ]}>
+          <Text
+            style={[
+              styles.netAmount,
+              { color: totals.netBalance >= 0 ? '#10b981' : '#ef4444' },
+            ]}
+          >
             ${Math.abs(totals.netBalance || 0).toFixed(2)}
-            {totals.netBalance > 0 ? ' in your favor' : 
-             totals.netBalance < 0 ? ' you owe' : ''}
+            {totals.netBalance > 0
+              ? ' in your favor'
+              : totals.netBalance < 0
+              ? ' you owe'
+              : ''}
           </Text>
         </View>
       </View>
@@ -196,17 +304,28 @@ export default function RoomScreen() {
         {members.map((member) => (
           <View key={member.id} style={styles.memberItem}>
             <View style={styles.memberInfo}>
-              <View style={[styles.memberAvatar, isDark && styles.memberAvatarDark]}>
-                <Text style={[styles.memberInitial, isDark && styles.memberInitialDark]}>
-                  {member.user_name.charAt(0).toUpperCase()}
+              <View
+                style={[styles.memberAvatar, isDark && styles.memberAvatarDark]}
+              >
+                <Text
+                  style={[
+                    styles.memberInitial,
+                    isDark && styles.memberInitialDark,
+                  ]}
+                >
+                  {member.user_name?.charAt(0).toUpperCase() || '?'}
                 </Text>
               </View>
               <View>
-                <Text style={[styles.memberName, isDark && styles.memberNameDark]}>
-                  {member.user_name}
+                <Text
+                  style={[styles.memberName, isDark && styles.memberNameDark]}
+                >
+                  {member.user_name || 'Unknown User'}
                   {member.user_id === user?.id && ' (You)'}
                 </Text>
-                <Text style={[styles.memberEmail, isDark && styles.memberEmailDark]}>
+                <Text
+                  style={[styles.memberEmail, isDark && styles.memberEmailDark]}
+                >
                   {member.user_email}
                 </Text>
               </View>
@@ -226,7 +345,9 @@ export default function RoomScreen() {
       keyExtractor={(item) => item.id}
       contentContainerStyle={styles.tabContent}
       renderItem={({ item }) => (
-        <View style={[styles.transactionCard, isDark && styles.transactionCardDark]}>
+        <View
+          style={[styles.transactionCard, isDark && styles.transactionCardDark]}
+        >
           <View style={styles.transactionHeader}>
             <View style={styles.transactionInfo}>
               <View style={styles.transactionMeta}>
@@ -239,51 +360,88 @@ export default function RoomScreen() {
                 ) : (
                   <DollarSign size={20} color="#3b82f6" />
                 )}
-                <Text style={[
-                  styles.transactionType,
-                  isDark && styles.transactionTypeDark,
-                  { color: item.status === 'settled' ? '#6b7280' : 
-                           item.type === 'borrowed' ? '#ef4444' :
-                           item.type === 'lent' ? '#10b981' : '#3b82f6' }
-                ]}>
+                <Text
+                  style={[
+                    styles.transactionType,
+                    isDark && styles.transactionTypeDark,
+                    {
+                      color:
+                        item.status === 'settled'
+                          ? '#6b7280'
+                          : item.type === 'borrowed'
+                          ? '#ef4444'
+                          : item.type === 'lent'
+                          ? '#10b981'
+                          : '#3b82f6',
+                    },
+                  ]}
+                >
                   {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
                 </Text>
               </View>
-              <Text style={[styles.transactionAmount, isDark && styles.transactionAmountDark]}>
+              <Text
+                style={[
+                  styles.transactionAmount,
+                  isDark && styles.transactionAmountDark,
+                ]}
+              >
                 ${item.amount.toFixed(2)}
               </Text>
             </View>
           </View>
-          
-          <Text style={[styles.transactionDescription, isDark && styles.transactionDescriptionDark]}>
+
+          <Text
+            style={[
+              styles.transactionDescription,
+              isDark && styles.transactionDescriptionDark,
+            ]}
+          >
             {item.description}
           </Text>
-          
+
           <View style={styles.transactionDetails}>
-            <Text style={[styles.transactionParties, isDark && styles.transactionPartiesDark]}>
-              {item.from_user?.name || 'Unknown'} → {item.to_user?.name || 'Unknown'}
+            <Text
+              style={[
+                styles.transactionParties,
+                isDark && styles.transactionPartiesDark,
+              ]}
+            >
+              {item.from_user?.name || 'Unknown'} →{' '}
+              {item.to_user?.name || 'Unknown'}
             </Text>
-            <Text style={[styles.transactionDate, isDark && styles.transactionDateDark]}>
+            <Text
+              style={[
+                styles.transactionDate,
+                isDark && styles.transactionDateDark,
+              ]}
+            >
               {new Date(item.created_at).toLocaleDateString()}
             </Text>
           </View>
 
-          {item.status === 'pending' && 
-           (item.from_user_id === user?.id || item.to_user_id === user?.id) && (
-            <TouchableOpacity
-              style={[styles.markPaidButton, isDark && styles.markPaidButtonDark]}
-              onPress={() => handleMarkAsPaid(item.id)}
-            >
-              <CheckCircle size={16} color="#10b981" />
-              <Text style={styles.markPaidText}>Mark as Paid</Text>
-            </TouchableOpacity>
-          )}
+          {item.status === 'pending' &&
+            (item.from_user_id === user?.id ||
+              item.to_user_id === user?.id) && (
+              <TouchableOpacity
+                style={[
+                  styles.markPaidButton,
+                  isDark && styles.markPaidButtonDark,
+                ]}
+                onPress={() => handleMarkAsPaid(item.id)}
+              >
+                <CheckCircle size={16} color="#10b981" />
+                <Text style={styles.markPaidText}>Mark as Paid</Text>
+              </TouchableOpacity>
+            )}
 
           {item.status === 'settled' && (
             <View style={styles.settledBadge}>
               <CheckCircle size={14} color="#10b981" />
               <Text style={styles.settledText}>
-                Settled {item.settled_at ? new Date(item.settled_at).toLocaleDateString() : ''}
+                Settled{' '}
+                {item.settled_at
+                  ? new Date(item.settled_at).toLocaleDateString()
+                  : ''}
               </Text>
             </View>
           )}
@@ -302,7 +460,10 @@ export default function RoomScreen() {
             Overall Balance
           </Text>
           <TouchableOpacity
-            style={[styles.settleAllButton, isDark && styles.settleAllButtonDark]}
+            style={[
+              styles.settleAllButton,
+              isDark && styles.settleAllButtonDark,
+            ]}
             onPress={handleSettleAll}
           >
             <CheckCircle size={16} color="#10b981" />
@@ -329,9 +490,14 @@ export default function RoomScreen() {
 
       {/* Individual Balances */}
       {balances.map((balance) => (
-        <View key={balance.userId} style={[styles.card, isDark && styles.cardDark]}>
+        <View
+          key={balance.userId}
+          style={[styles.card, isDark && styles.cardDark]}
+        >
           <View style={styles.balanceHeader}>
-            <Text style={[styles.balanceName, isDark && styles.balanceNameDark]}>
+            <Text
+              style={[styles.balanceName, isDark && styles.balanceNameDark]}
+            >
               {balance.userName}
             </Text>
             <View style={styles.netBalance}>
@@ -342,19 +508,29 @@ export default function RoomScreen() {
               ) : (
                 <CheckCircle size={20} color="#6b7280" />
               )}
-              <Text style={[
-                styles.netAmount,
-                { color: balance.netBalance > 0 ? '#10b981' : 
-                         balance.netBalance < 0 ? '#ef4444' : '#6b7280' }
-              ]}>
+              <Text
+                style={[
+                  styles.netAmount,
+                  {
+                    color:
+                      balance.netBalance > 0
+                        ? '#10b981'
+                        : balance.netBalance < 0
+                        ? '#ef4444'
+                        : '#6b7280',
+                  },
+                ]}
+              >
                 ${Math.abs(balance.netBalance).toFixed(2)}
               </Text>
             </View>
           </View>
-          
+
           <View style={styles.balanceDetails}>
             <View style={styles.balanceItem}>
-              <Text style={[styles.balanceLabel, isDark && styles.balanceLabelDark]}>
+              <Text
+                style={[styles.balanceLabel, isDark && styles.balanceLabelDark]}
+              >
                 You owe them
               </Text>
               <Text style={[styles.balanceAmount, { color: '#ef4444' }]}>
@@ -362,7 +538,9 @@ export default function RoomScreen() {
               </Text>
             </View>
             <View style={styles.balanceItem}>
-              <Text style={[styles.balanceLabel, isDark && styles.balanceLabelDark]}>
+              <Text
+                style={[styles.balanceLabel, isDark && styles.balanceLabelDark]}
+              >
                 They owe you
               </Text>
               <Text style={[styles.balanceAmount, { color: '#10b981' }]}>
@@ -392,7 +570,7 @@ export default function RoomScreen() {
       {/* Header */}
       <View style={[styles.header, isDark && styles.headerDark]}>
         <TouchableOpacity onPress={() => router.back()}>
-          <ArrowLeft size={24} color={isDark ? "#f9fafb" : "#111827"} />
+          <ArrowLeft size={24} color={isDark ? '#f9fafb' : '#111827'} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>
           {room.name}
@@ -405,7 +583,7 @@ export default function RoomScreen() {
             <Plus size={20} color="#ffffff" />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setShowSettingsModal(true)}>
-            <Settings size={24} color={isDark ? "#f9fafb" : "#111827"} />
+            <Settings size={24} color={isDark ? '#f9fafb' : '#111827'} />
           </TouchableOpacity>
         </View>
       </View>
@@ -431,7 +609,9 @@ export default function RoomScreen() {
                 styles.tabButtonText,
                 isDark && styles.tabButtonTextDark,
                 activeTab === tab.key && styles.activeTabButtonText,
-                activeTab === tab.key && isDark && styles.activeTabButtonTextDark,
+                activeTab === tab.key &&
+                  isDark &&
+                  styles.activeTabButtonTextDark,
               ]}
             >
               {tab.label}
@@ -451,10 +631,14 @@ export default function RoomScreen() {
         animationType="slide"
         presentationStyle="pageSheet"
       >
-        <SafeAreaView style={[styles.modalContainer, isDark && styles.modalContainerDark]}>
+        <SafeAreaView
+          style={[styles.modalContainer, isDark && styles.modalContainerDark]}
+        >
           <View style={[styles.modalHeader, isDark && styles.modalHeaderDark]}>
             <TouchableOpacity onPress={() => setShowAddModal(false)}>
-              <Text style={[styles.cancelButton, isDark && styles.cancelButtonDark]}>
+              <Text
+                style={[styles.cancelButton, isDark && styles.cancelButtonDark]}
+              >
                 Cancel
               </Text>
             </TouchableOpacity>
@@ -462,12 +646,14 @@ export default function RoomScreen() {
               Add Transaction
             </Text>
             <TouchableOpacity onPress={handleAddTransaction}>
-              <Text style={[styles.saveButton, isDark && styles.saveButtonDark]}>
+              <Text
+                style={[styles.saveButton, isDark && styles.saveButtonDark]}
+              >
                 Add
               </Text>
             </TouchableOpacity>
           </View>
-          
+
           <View style={styles.modalContent}>
             <View style={styles.typeSelector}>
               {(['borrowed', 'lent', 'shared'] as const).map((t) => (
@@ -495,45 +681,55 @@ export default function RoomScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={[styles.label, isDark && styles.labelDark]}>Amount</Text>
+              <Text style={[styles.label, isDark && styles.labelDark]}>
+                Amount
+              </Text>
               <TextInput
                 style={[styles.input, isDark && styles.inputDark]}
                 value={amount}
                 onChangeText={setAmount}
                 placeholder="0.00"
-                placeholderTextColor={isDark ? "#6b7280" : "#9ca3af"}
+                placeholderTextColor={isDark ? '#6b7280' : '#9ca3af'}
                 keyboardType="decimal-pad"
               />
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={[styles.label, isDark && styles.labelDark]}>Description</Text>
+              <Text style={[styles.label, isDark && styles.labelDark]}>
+                Description
+              </Text>
               <TextInput
                 style={[styles.input, isDark && styles.inputDark]}
                 value={description}
                 onChangeText={setDescription}
                 placeholder="What was this for?"
-                placeholderTextColor={isDark ? "#6b7280" : "#9ca3af"}
+                placeholderTextColor={isDark ? '#6b7280' : '#9ca3af'}
                 multiline
               />
             </View>
 
             <View style={styles.inputGroup}>
               <Text style={[styles.label, isDark && styles.labelDark]}>
-                {type === 'borrowed' ? 'Borrowed from' : 
-                 type === 'lent' ? 'Lent to' : 'Shared with'}
+                {type === 'borrowed'
+                  ? 'Borrowed from'
+                  : type === 'lent'
+                  ? 'Lent to'
+                  : 'Shared with'}
               </Text>
               <View style={styles.memberSelector}>
                 {members
-                  .filter(member => member.user_id !== user?.id)
+                  .filter((member) => member.user_id !== user?.id)
                   .map((member) => (
                     <TouchableOpacity
                       key={member.id}
                       style={[
                         styles.memberOption,
                         isDark && styles.memberOptionDark,
-                        targetUserId === member.user_id && styles.selectedMemberOption,
-                        targetUserId === member.user_id && isDark && styles.selectedMemberOptionDark,
+                        targetUserId === member.user_id &&
+                          styles.selectedMemberOption,
+                        targetUserId === member.user_id &&
+                          isDark &&
+                          styles.selectedMemberOptionDark,
                       ]}
                       onPress={() => setTargetUserId(member.user_id)}
                     >
@@ -541,7 +737,8 @@ export default function RoomScreen() {
                         style={[
                           styles.memberOptionText,
                           isDark && styles.memberOptionTextDark,
-                          targetUserId === member.user_id && styles.selectedMemberOptionText,
+                          targetUserId === member.user_id &&
+                            styles.selectedMemberOptionText,
                         ]}
                       >
                         {member.user_name}
@@ -550,6 +747,173 @@ export default function RoomScreen() {
                   ))}
               </View>
             </View>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* Settings Modal */}
+      <Modal
+        visible={showSettingsModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <SafeAreaView
+          style={[styles.modalContainer, isDark && styles.modalContainerDark]}
+        >
+          <View style={[styles.modalHeader, isDark && styles.modalHeaderDark]}>
+            <TouchableOpacity onPress={() => setShowSettingsModal(false)}>
+              <Text
+                style={[styles.cancelButton, isDark && styles.cancelButtonDark]}
+              >
+                Cancel
+              </Text>
+            </TouchableOpacity>
+            <Text style={[styles.modalTitle, isDark && styles.modalTitleDark]}>
+              Room Settings
+            </Text>
+            <View style={{ width: 50 }} />
+          </View>
+
+          <View style={styles.modalContent}>
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, isDark && styles.labelDark]}>
+                Room Name
+              </Text>
+              <Text
+                style={[styles.settingValue, isDark && styles.settingValueDark]}
+              >
+                {room.name}
+              </Text>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, isDark && styles.labelDark]}>
+                Description
+              </Text>
+              <Text
+                style={[styles.settingValue, isDark && styles.settingValueDark]}
+              >
+                {room.description || 'No description'}
+              </Text>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, isDark && styles.labelDark]}>
+                Invite Code
+              </Text>
+              <TouchableOpacity
+                style={[
+                  styles.inviteCodeContainer,
+                  isDark && styles.inviteCodeContainerDark,
+                ]}
+                onPress={shareInviteCode}
+              >
+                <Text
+                  style={[styles.inviteCode, isDark && styles.inviteCodeDark]}
+                >
+                  {room.invite_code || 'Not available'}
+                </Text>
+                <Share size={16} color={isDark ? '#9ca3af' : '#6b7280'} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, isDark && styles.labelDark]}>
+                Created
+              </Text>
+              <Text
+                style={[styles.settingValue, isDark && styles.settingValueDark]}
+              >
+                {new Date(room.created_at).toLocaleDateString()}
+              </Text>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, isDark && styles.labelDark]}>
+                Members ({members.length})
+              </Text>
+              <View style={styles.membersList}>
+                {members.map((member) => (
+                  <View
+                    key={member.id}
+                    style={[
+                      styles.settingsMember,
+                      isDark && styles.settingsMemberDark,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.memberAvatar,
+                        isDark && styles.memberAvatarDark,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.memberInitial,
+                          isDark && styles.memberInitialDark,
+                        ]}
+                      >
+                        {member.user_name?.charAt(0).toUpperCase() || '?'}
+                      </Text>
+                    </View>
+                    <View style={styles.memberInfo}>
+                      <Text
+                        style={[
+                          styles.memberName,
+                          isDark && styles.memberNameDark,
+                        ]}
+                      >
+                        {member.user_name || 'Unknown User'}
+                        {member.user_id === user?.id && ' (You)'}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.memberEmail,
+                          isDark && styles.memberEmailDark,
+                        ]}
+                      >
+                        {member.user_email}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            {/* Delete Room Section - Only show to room creator */}
+            {room.created_by === user?.id && (
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, isDark && styles.labelDark]}>
+                  Danger Zone
+                </Text>
+                <TouchableOpacity
+                  style={[
+                    styles.deleteButton,
+                    isDark && styles.deleteButtonDark,
+                  ]}
+                  onPress={handleDeleteRoom}
+                >
+                  <Trash2 size={16} color="#ef4444" />
+                  <Text style={styles.deleteButtonText}>Delete Room</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Leave Room Section - Only show to non-creators */}
+            {room.created_by !== user?.id && (
+              <View style={styles.inputGroup}>
+                <Text style={[styles.label, isDark && styles.labelDark]}>
+                  Actions
+                </Text>
+                <TouchableOpacity
+                  style={[styles.leaveButton, isDark && styles.leaveButtonDark]}
+                  onPress={handleLeaveRoom}
+                >
+                  <LogOut size={16} color="#f59e0b" />
+                  <Text style={styles.leaveButtonText}>Leave Room</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </SafeAreaView>
       </Modal>
@@ -1100,5 +1464,98 @@ const styles = StyleSheet.create({
   },
   selectedMemberOptionText: {
     color: '#ffffff',
+  },
+  settingValue: {
+    fontSize: 16,
+    color: '#374151',
+    padding: 12,
+    backgroundColor: '#f9fafb',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  settingValueDark: {
+    color: '#f9fafb',
+    backgroundColor: '#374151',
+    borderColor: '#4b5563',
+  },
+  inviteCodeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    backgroundColor: '#f9fafb',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  inviteCodeContainerDark: {
+    backgroundColor: '#374151',
+    borderColor: '#4b5563',
+  },
+  inviteCode: {
+    fontSize: 16,
+    fontFamily: 'monospace',
+    color: '#374151',
+    fontWeight: '600',
+  },
+  inviteCodeDark: {
+    color: '#f9fafb',
+  },
+  membersList: {
+    gap: 8,
+  },
+  settingsMember: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#f9fafb',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  settingsMemberDark: {
+    backgroundColor: '#374151',
+    borderColor: '#4b5563',
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 12,
+    backgroundColor: '#fef2f2',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+  },
+  deleteButtonDark: {
+    backgroundColor: '#451a1a',
+    borderColor: '#7f1d1d',
+  },
+  deleteButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ef4444',
+  },
+  leaveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    padding: 12,
+    backgroundColor: '#fffbeb',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+  },
+  leaveButtonDark: {
+    backgroundColor: '#451a03',
+    borderColor: '#92400e',
+  },
+  leaveButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#f59e0b',
   },
 });

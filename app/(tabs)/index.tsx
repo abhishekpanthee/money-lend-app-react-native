@@ -15,6 +15,7 @@ import { Plus, Users, ArrowRight, Share, Eye } from 'lucide-react-native';
 import { useAuth } from '@/hooks/useAuth';
 import { useRooms } from '@/hooks/useRooms';
 import { router } from 'expo-router';
+import { ClearStorageButton } from '@/components/ClearStorageButton';
 
 interface Room {
   id: string;
@@ -28,13 +29,24 @@ interface Room {
 export default function RoomsScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const { user, signInWithGoogle, loading } = useAuth();
+  const { user, signInWithGoogle, signInWithEmail, signUpWithEmail, loading } =
+    useAuth();
   const { rooms, createRoom, joinRoom, loading: roomsLoading } = useRooms();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [roomName, setRoomName] = useState('');
   const [roomDescription, setRoomDescription] = useState('');
   const [inviteCode, setInviteCode] = useState('');
+
+  // Email auth fields
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showEmailAuth, setShowEmailAuth] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
 
   const handleCreateRoom = async () => {
     if (!roomName.trim()) {
@@ -63,8 +75,94 @@ export default function RoomsScreen() {
       setShowJoinModal(false);
       setInviteCode('');
     } catch (error) {
-      Alert.alert('Error', error.message || 'Failed to join room');
+      Alert.alert('Error', 'Failed to join room');
     }
+  };
+
+  const handleEmailAuth = async () => {
+    if (!email.trim() || !password.trim()) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    if (isSignUp) {
+      if (!fullName.trim()) {
+        Alert.alert('Error', 'Please enter your full name');
+        return;
+      }
+      if (password !== confirmPassword) {
+        Alert.alert('Error', 'Passwords do not match');
+        return;
+      }
+      if (password.length < 6) {
+        Alert.alert('Error', 'Password must be at least 6 characters');
+        return;
+      }
+    }
+
+    try {
+      if (isSignUp) {
+        await signUpWithEmail(email, password, fullName);
+        Alert.alert(
+          'Success',
+          'Account created successfully! Please check your email for confirmation.'
+        );
+      } else {
+        await signInWithEmail(email, password);
+      }
+      setShowEmailAuth(false);
+      clearEmailForm();
+    } catch (error: any) {
+      let errorMessage =
+        error.message || `Failed to ${isSignUp ? 'sign up' : 'sign in'}`;
+
+      // Handle specific error cases
+      if (error.message?.includes('Invalid login credentials')) {
+        Alert.alert(
+          'Sign In Failed',
+          "Invalid email or password. Don't have an account yet?",
+          [
+            { text: 'Try Again', style: 'cancel' },
+            {
+              text: 'Sign Up Instead',
+              onPress: () => {
+                setIsSignUp(true);
+                setPassword('');
+                setConfirmPassword('');
+              },
+            },
+          ]
+        );
+        return;
+      } else if (error.message?.includes('email not confirmed')) {
+        errorMessage =
+          'Please check your email and click the confirmation link to complete signup.';
+      } else if (error.message?.includes('Email rate limit exceeded')) {
+        errorMessage =
+          'Too many requests. Please wait a moment before trying again.';
+      }
+
+      Alert.alert('Error', errorMessage);
+    }
+  };
+
+  const clearAuthFields = () => {
+    setEmail('');
+    setPassword('');
+    setFullName('');
+    setConfirmPassword('');
+  };
+
+  const clearEmailForm = () => {
+    setEmail('');
+    setPassword('');
+    setFullName('');
+    setConfirmPassword('');
+  };
+
+  const switchAuthMode = () => {
+    setAuthMode(authMode === 'signin' ? 'signup' : 'signin');
+    clearAuthFields();
   };
 
   const shareInviteCode = (room: Room) => {
@@ -80,7 +178,7 @@ export default function RoomsScreen() {
   };
 
   const renderRoom = ({ item }: { item: Room }) => (
-    <TouchableOpacity 
+    <TouchableOpacity
       style={[styles.roomCard, isDark && styles.roomCardDark]}
       onPress={() => viewRoom(item)}
     >
@@ -89,7 +187,12 @@ export default function RoomsScreen() {
           <Text style={[styles.roomName, isDark && styles.roomNameDark]}>
             {item.name}
           </Text>
-          <Text style={[styles.roomDescription, isDark && styles.roomDescriptionDark]}>
+          <Text
+            style={[
+              styles.roomDescription,
+              isDark && styles.roomDescriptionDark,
+            ]}
+          >
             {item.description}
           </Text>
         </View>
@@ -97,12 +200,12 @@ export default function RoomsScreen() {
           style={styles.shareButton}
           onPress={() => shareInviteCode(item)}
         >
-          <Share size={20} color={isDark ? "#9ca3af" : "#6b7280"} />
+          <Share size={20} color={isDark ? '#9ca3af' : '#6b7280'} />
         </TouchableOpacity>
       </View>
       <View style={styles.roomFooter}>
         <View style={styles.membersInfo}>
-          <Users size={16} color={isDark ? "#9ca3af" : "#6b7280"} />
+          <Users size={16} color={isDark ? '#9ca3af' : '#6b7280'} />
           <Text style={[styles.membersText, isDark && styles.membersTextDark]}>
             {item.member_count || 0} members
           </Text>
@@ -112,12 +215,17 @@ export default function RoomsScreen() {
             style={[styles.viewButton, isDark && styles.viewButtonDark]}
             onPress={() => viewRoom(item)}
           >
-            <Eye size={16} color={isDark ? "#ffffff" : "#3b82f6"} />
-            <Text style={[styles.viewButtonText, isDark && styles.viewButtonTextDark]}>
+            <Eye size={16} color={isDark ? '#ffffff' : '#3b82f6'} />
+            <Text
+              style={[
+                styles.viewButtonText,
+                isDark && styles.viewButtonTextDark,
+              ]}
+            >
               View
             </Text>
           </TouchableOpacity>
-          <ArrowRight size={20} color={isDark ? "#9ca3af" : "#6b7280"} />
+          <ArrowRight size={20} color={isDark ? '#9ca3af' : '#6b7280'} />
         </View>
       </View>
     </TouchableOpacity>
@@ -130,24 +238,170 @@ export default function RoomsScreen() {
           <Text style={[styles.authTitle, isDark && styles.authTitleDark]}>
             Welcome to RoomMate Tracker
           </Text>
-          <Text style={[styles.authSubtitle, isDark && styles.authSubtitleDark]}>
+          <Text
+            style={[styles.authSubtitle, isDark && styles.authSubtitleDark]}
+          >
             Track shared expenses and settle debts with your roommates
           </Text>
-          <TouchableOpacity 
-            style={[styles.signInButton, isDark && styles.signInButtonDark, loading && styles.signInButtonDisabled]}
-            onPress={async () => {
-              try {
-                await signInWithGoogle();
-              } catch (error) {
-                Alert.alert('Sign In Error', 'Failed to sign in with Google. Please try again.');
-              }
-            }}
-            disabled={loading}
-          >
-            <Text style={[styles.signInText, isDark && styles.signInTextDark]}>
-              {loading ? 'Signing in...' : 'Sign in with Google'}
-            </Text>
-          </TouchableOpacity>
+
+          {/* Email Auth Form */}
+          {showEmailAuth && (
+            <View style={styles.emailAuthForm}>
+              {isSignUp && (
+                <TextInput
+                  style={[styles.input, isDark && styles.inputDark]}
+                  placeholder="Full Name"
+                  placeholderTextColor={isDark ? '#9ca3af' : '#6b7280'}
+                  value={fullName}
+                  onChangeText={setFullName}
+                  autoCapitalize="words"
+                />
+              )}
+              <TextInput
+                style={[styles.input, isDark && styles.inputDark]}
+                placeholder="Email"
+                placeholderTextColor={isDark ? '#9ca3af' : '#6b7280'}
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+              <TextInput
+                style={[styles.input, isDark && styles.inputDark]}
+                placeholder="Password"
+                placeholderTextColor={isDark ? '#9ca3af' : '#6b7280'}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+              />
+              {isSignUp && (
+                <TextInput
+                  style={[styles.input, isDark && styles.inputDark]}
+                  placeholder="Confirm Password"
+                  placeholderTextColor={isDark ? '#9ca3af' : '#6b7280'}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry
+                />
+              )}
+
+              <TouchableOpacity
+                style={[
+                  styles.signInButton,
+                  isDark && styles.signInButtonDark,
+                  loading && styles.signInButtonDisabled,
+                ]}
+                onPress={handleEmailAuth}
+                disabled={loading}
+              >
+                <Text
+                  style={[styles.signInText, isDark && styles.signInTextDark]}
+                >
+                  {loading
+                    ? isSignUp
+                      ? 'Creating Account...'
+                      : 'Signing In...'
+                    : isSignUp
+                    ? 'Create Account'
+                    : 'Sign In'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.authToggle}
+                onPress={() => {
+                  setIsSignUp(!isSignUp);
+                  clearEmailForm();
+                }}
+              >
+                <Text
+                  style={[
+                    styles.authToggleText,
+                    isDark && styles.authToggleTextDark,
+                  ]}
+                >
+                  {isSignUp
+                    ? 'Already have an account? Sign In'
+                    : "Don't have an account? Sign Up"}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.authToggle}
+                onPress={() => {
+                  setShowEmailAuth(false);
+                  clearEmailForm();
+                }}
+              >
+                <Text
+                  style={[
+                    styles.authToggleText,
+                    isDark && styles.authToggleTextDark,
+                  ]}
+                >
+                  Back to Google Sign In
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Google Auth or Email Toggle */}
+          {!showEmailAuth && (
+            <View style={styles.authOptions}>
+              <TouchableOpacity
+                style={[
+                  styles.signInButton,
+                  isDark && styles.signInButtonDark,
+                  loading && styles.signInButtonDisabled,
+                ]}
+                onPress={async () => {
+                  try {
+                    await signInWithGoogle();
+                  } catch (error) {
+                    Alert.alert(
+                      'Sign In Error',
+                      'Failed to sign in with Google. Please try again.'
+                    );
+                  }
+                }}
+                disabled={loading}
+              >
+                <Text
+                  style={[styles.signInText, isDark && styles.signInTextDark]}
+                >
+                  {loading ? 'Signing in...' : 'Sign in with Google'}
+                </Text>
+              </TouchableOpacity>
+
+              <View style={styles.divider}>
+                <View
+                  style={[styles.dividerLine, isDark && styles.dividerLineDark]}
+                />
+                <Text
+                  style={[styles.dividerText, isDark && styles.dividerTextDark]}
+                >
+                  or
+                </Text>
+                <View
+                  style={[styles.dividerLine, isDark && styles.dividerLineDark]}
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[styles.emailButton, isDark && styles.emailButtonDark]}
+                onPress={() => setShowEmailAuth(true)}
+              >
+                <Text
+                  style={[
+                    styles.emailButtonText,
+                    isDark && styles.emailButtonTextDark,
+                  ]}
+                >
+                  Continue with Email
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </SafeAreaView>
     );
@@ -162,20 +416,39 @@ export default function RoomsScreen() {
             style={[styles.actionButton, isDark && styles.actionButtonDark]}
             onPress={() => setShowJoinModal(true)}
           >
-            <Text style={[styles.actionButtonText, isDark && styles.actionButtonTextDark]}>
+            <Text
+              style={[
+                styles.actionButtonText,
+                isDark && styles.actionButtonTextDark,
+              ]}
+            >
               Join
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.actionButton, styles.primaryButton, isDark && styles.primaryButtonDark]}
+            style={[
+              styles.actionButton,
+              styles.primaryButton,
+              isDark && styles.primaryButtonDark,
+            ]}
             onPress={() => setShowCreateModal(true)}
           >
             <Plus size={20} color="#ffffff" />
-            <Text style={[styles.primaryButtonText, isDark && styles.primaryButtonTextDark]}>
+            <Text
+              style={[
+                styles.primaryButtonText,
+                isDark && styles.primaryButtonTextDark,
+              ]}
+            >
               Create
             </Text>
           </TouchableOpacity>
         </View>
+      </View>
+
+      {/* Add Clear Storage Button */}
+      <View style={styles.clearStorageContainer}>
+        <ClearStorageButton />
       </View>
 
       <FlatList
@@ -192,10 +465,14 @@ export default function RoomsScreen() {
         animationType="slide"
         presentationStyle="pageSheet"
       >
-        <SafeAreaView style={[styles.modalContainer, isDark && styles.modalContainerDark]}>
+        <SafeAreaView
+          style={[styles.modalContainer, isDark && styles.modalContainerDark]}
+        >
           <View style={[styles.modalHeader, isDark && styles.modalHeaderDark]}>
             <TouchableOpacity onPress={() => setShowCreateModal(false)}>
-              <Text style={[styles.cancelButton, isDark && styles.cancelButtonDark]}>
+              <Text
+                style={[styles.cancelButton, isDark && styles.cancelButtonDark]}
+              >
                 Cancel
               </Text>
             </TouchableOpacity>
@@ -203,7 +480,9 @@ export default function RoomsScreen() {
               Create Room
             </Text>
             <TouchableOpacity onPress={handleCreateRoom}>
-              <Text style={[styles.saveButton, isDark && styles.saveButtonDark]}>
+              <Text
+                style={[styles.saveButton, isDark && styles.saveButtonDark]}
+              >
                 Create
               </Text>
             </TouchableOpacity>
@@ -218,7 +497,7 @@ export default function RoomsScreen() {
                 value={roomName}
                 onChangeText={setRoomName}
                 placeholder="e.g., Apartment 4B"
-                placeholderTextColor={isDark ? "#6b7280" : "#9ca3af"}
+                placeholderTextColor={isDark ? '#6b7280' : '#9ca3af'}
               />
             </View>
             <View style={styles.inputGroup}>
@@ -230,7 +509,7 @@ export default function RoomsScreen() {
                 value={roomDescription}
                 onChangeText={setRoomDescription}
                 placeholder="Brief description of this room"
-                placeholderTextColor={isDark ? "#6b7280" : "#9ca3af"}
+                placeholderTextColor={isDark ? '#6b7280' : '#9ca3af'}
                 multiline
               />
             </View>
@@ -244,10 +523,14 @@ export default function RoomsScreen() {
         animationType="slide"
         presentationStyle="pageSheet"
       >
-        <SafeAreaView style={[styles.modalContainer, isDark && styles.modalContainerDark]}>
+        <SafeAreaView
+          style={[styles.modalContainer, isDark && styles.modalContainerDark]}
+        >
           <View style={[styles.modalHeader, isDark && styles.modalHeaderDark]}>
             <TouchableOpacity onPress={() => setShowJoinModal(false)}>
-              <Text style={[styles.cancelButton, isDark && styles.cancelButtonDark]}>
+              <Text
+                style={[styles.cancelButton, isDark && styles.cancelButtonDark]}
+              >
                 Cancel
               </Text>
             </TouchableOpacity>
@@ -255,7 +538,9 @@ export default function RoomsScreen() {
               Join Room
             </Text>
             <TouchableOpacity onPress={handleJoinRoom}>
-              <Text style={[styles.saveButton, isDark && styles.saveButtonDark]}>
+              <Text
+                style={[styles.saveButton, isDark && styles.saveButtonDark]}
+              >
                 Join
               </Text>
             </TouchableOpacity>
@@ -270,7 +555,7 @@ export default function RoomsScreen() {
                 value={inviteCode}
                 onChangeText={setInviteCode}
                 placeholder="Enter 8-character code"
-                placeholderTextColor={isDark ? "#6b7280" : "#9ca3af"}
+                placeholderTextColor={isDark ? '#6b7280' : '#9ca3af'}
                 autoCapitalize="characters"
                 maxLength={8}
               />
@@ -555,5 +840,69 @@ const styles = StyleSheet.create({
     backgroundColor: '#374151',
     borderColor: '#4b5563',
     color: '#f9fafb',
+  },
+  emailAuthForm: {
+    width: '100%',
+    paddingHorizontal: 24,
+  },
+  authToggle: {
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  authToggleText: {
+    fontSize: 14,
+    color: '#3b82f6',
+  },
+  authToggleTextDark: {
+    color: '#60a5fa',
+  },
+  authOptions: {
+    width: '100%',
+    paddingHorizontal: 24,
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 24,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#d1d5db',
+  },
+  dividerLineDark: {
+    backgroundColor: '#4b5563',
+  },
+  dividerText: {
+    marginHorizontal: 16,
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  dividerTextDark: {
+    color: '#9ca3af',
+  },
+  emailButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: '#3b82f6',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  emailButtonDark: {
+    borderColor: '#60a5fa',
+  },
+  emailButtonText: {
+    color: '#3b82f6',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  emailButtonTextDark: {
+    color: '#60a5fa',
+  },
+  clearStorageContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
   },
 });

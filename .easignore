@@ -1,4 +1,4 @@
-# EAS ignore file - project specific
+
 node_modules/
 .git/
 .expo/
@@ -19,20 +19,3 @@ coverage/
 .env.development.local
 .env.test.local
 .env.production.local
-
-# Parent directories and system files
-../
-../../
-../../../
-**/.config/
-**/.mozilla/
-**/.chrome/
-**/.chromium/
-**/.cache/
-**/.local/
-**/Downloads/
-**/Desktop/
-**/Documents/
-**/Pictures/
-**/Videos/
-**/Music/

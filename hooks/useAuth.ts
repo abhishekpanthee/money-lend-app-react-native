@@ -21,6 +21,12 @@ interface AuthUser extends User {
 interface AuthContextType {
   user: AuthUser | null;
   signInWithGoogle: () => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<void>;
+  signUpWithEmail: (
+    email: string,
+    password: string,
+    fullName: string
+  ) => Promise<void>;
   signOut: () => Promise<void>;
   loading: boolean;
 }
@@ -43,13 +49,16 @@ export function useAuth(): AuthContextType {
       }
 
       // Get current session from Supabase
-      const { data: { session }, error } = await supabase.auth.getSession();
-      
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
+
       if (error) {
         console.error('Error getting session:', error);
       }
 
-      const currentUser = session?.user as AuthUser || null;
+      const currentUser = (session?.user as AuthUser) || null;
       setUser(currentUser);
 
       // Cache user data
@@ -68,21 +77,60 @@ export function useAuth(): AuthContextType {
 
   useEffect(() => {
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        const currentUser = session?.user as AuthUser || null;
-        setUser(currentUser);
-        
-        // Cache user data
-        if (currentUser) {
-          await localStorage.setItem('current_user', currentUser);
-        } else {
-          await localStorage.removeItem('current_user');
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const currentUser = (session?.user as AuthUser) || null;
+      setUser(currentUser);
+
+      // Create profile if user just signed up or signed in without profile
+      if (
+        currentUser &&
+        (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')
+      ) {
+        try {
+          // Check if profile exists
+          const { data: existingProfile } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('id', currentUser.id)
+            .single();
+
+          // Create profile if it doesn't exist
+          if (!existingProfile) {
+            const { error } = await supabase.from('profiles').insert({
+              id: currentUser.id,
+              email: currentUser.email,
+              name:
+                currentUser.user_metadata.full_name ||
+                currentUser.user_metadata.name ||
+                currentUser.email,
+              full_name:
+                currentUser.user_metadata.full_name ||
+                currentUser.user_metadata.name ||
+                currentUser.email,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            });
+
+            if (error && !error.message.includes('duplicate key')) {
+              console.error('Error creating profile:', error);
+            }
+          }
+        } catch (error) {
+          console.error('Error creating profile:', error);
         }
-        
-        setLoading(false);
       }
-    );
+
+      // Cache user data
+      if (currentUser) {
+        await localStorage.setItem('current_user', currentUser);
+      } else {
+        await localStorage.removeItem('current_user');
+      }
+
+      setLoading(false);
+    });
 
     return () => subscription.unsubscribe();
   }, []);
@@ -91,7 +139,7 @@ export function useAuth(): AuthContextType {
     setLoading(true);
     try {
       let redirectUrl;
-      
+
       if (Platform.OS === 'web') {
         redirectUrl = `${window.location.origin}/auth/callback`;
       } else {
@@ -126,12 +174,65 @@ export function useAuth(): AuthContextType {
     }
   };
 
+  const signInWithEmail = async (email: string, password: string) => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
+      // User will be set automatically by the auth state change listener
+    } catch (error) {
+      console.error('Error signing in with email:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const signUpWithEmail = async (
+    email: string,
+    password: string,
+    fullName: string
+  ) => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: fullName,
+            name: fullName,
+          },
+        },
+      });
+
+      if (error) throw error;
+
+      // Check if user needs to confirm email
+      if (data.user && !data.session) {
+        throw new Error(
+          'Please check your email and click the confirmation link to complete signup.'
+        );
+      }
+    } catch (error) {
+      console.error('Error signing up with email:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const signOut = async () => {
     setLoading(true);
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-      
+
       // Clear cached data
       await localStorage.removeItem('current_user');
     } catch (error) {
@@ -145,6 +246,8 @@ export function useAuth(): AuthContextType {
   return {
     user,
     signInWithGoogle,
+    signInWithEmail,
+    signUpWithEmail,
     signOut,
     loading,
   };

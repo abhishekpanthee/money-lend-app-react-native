@@ -35,11 +35,13 @@ export function useSummary(roomId?: string) {
       // Get all pending transactions for this room
       const { data: transactions, error } = await supabase
         .from('transactions')
-        .select(`
+        .select(
+          `
           *,
-          from_user:from_user_id(email, raw_user_meta_data),
-          to_user:to_user_id(email, raw_user_meta_data)
-        `)
+          from_user:profiles!transactions_from_user_id_profiles_fkey(id, email, name, full_name),
+          to_user:profiles!transactions_to_user_id_profiles_fkey(id, email, name, full_name)
+        `
+        )
         .eq('room_id', roomId)
         .eq('status', 'pending');
 
@@ -48,26 +50,27 @@ export function useSummary(roomId?: string) {
       // Get all room members
       const { data: members, error: membersError } = await supabase
         .from('room_members')
-        .select(`
+        .select(
+          `
           user_id,
-          user:user_id(email, raw_user_meta_data)
-        `)
+          profile:profiles!room_members_user_id_profiles_fkey(id, email, name, full_name)
+        `
+        )
         .eq('room_id', roomId);
 
       if (membersError) throw membersError;
 
       // Calculate balances for each member
       const balanceMap = new Map<string, Balance>();
-      
+
       // Initialize balances for all members
-      members.forEach(member => {
+      members.forEach((member) => {
         if (member.user_id !== user.id) {
+          const profile = member.profile?.[0] || member.profile;
           balanceMap.set(member.user_id, {
             userId: member.user_id,
-            userName: member.user?.raw_user_meta_data?.name || 
-                     member.user?.raw_user_meta_data?.full_name || 
-                     'Unknown User',
-            userEmail: member.user?.email || 'unknown@email.com',
+            userName: profile?.name || profile?.full_name || 'Unknown User',
+            userEmail: profile?.email || 'unknown@email.com',
             youOwe: 0,
             owesYou: 0,
             netBalance: 0,
@@ -76,26 +79,36 @@ export function useSummary(roomId?: string) {
       });
 
       // Calculate amounts from transactions
-      transactions.forEach(transaction => {
+      transactions.forEach((transaction) => {
         const { from_user_id, to_user_id, amount, type } = transaction;
-        
+
         if (from_user_id === user.id) {
-          // Current user is the one who paid/lent
+          // Current user created this transaction
           const balance = balanceMap.get(to_user_id);
           if (balance) {
             if (type === 'lent') {
+              // User lent money to target_user -> target_user owes current user
               balance.owesYou += amount;
+            } else if (type === 'borrowed') {
+              // User borrowed money from target_user -> current user owes target_user
+              balance.youOwe += amount;
             } else if (type === 'shared') {
+              // Shared expense -> current user paid, target_user owes half
               balance.owesYou += amount / 2;
             }
           }
         } else if (to_user_id === user.id) {
-          // Current user owes money
+          // Someone else created a transaction involving current user
           const balance = balanceMap.get(from_user_id);
           if (balance) {
-            if (type === 'borrowed') {
+            if (type === 'lent') {
+              // Other user lent money to current user -> current user owes them
               balance.youOwe += amount;
+            } else if (type === 'borrowed') {
+              // Other user borrowed from current user -> they owe current user
+              balance.owesYou += amount;
             } else if (type === 'shared') {
+              // Other user paid shared expense -> current user owes half
               balance.youOwe += amount / 2;
             }
           }
@@ -103,7 +116,7 @@ export function useSummary(roomId?: string) {
       });
 
       // Calculate net balances
-      const balancesList = Array.from(balanceMap.values()).map(balance => ({
+      const balancesList = Array.from(balanceMap.values()).map((balance) => ({
         ...balance,
         netBalance: balance.owesYou - balance.youOwe,
       }));
@@ -128,7 +141,8 @@ export function useSummary(roomId?: string) {
   };
 
   const settleAll = async () => {
-    if (!user || !roomId) throw new Error('User not authenticated or room not selected');
+    if (!user || !roomId)
+      throw new Error('User not authenticated or room not selected');
 
     setLoading(true);
     try {
@@ -160,11 +174,13 @@ export function useSummary(roomId?: string) {
     try {
       const { data: transactions, error } = await supabase
         .from('transactions')
-        .select(`
+        .select(
+          `
           *,
-          from_user:from_user_id(email, raw_user_meta_data),
-          to_user:to_user_id(email, raw_user_meta_data)
-        `)
+          from_user:profiles!transactions_from_user_id_profiles_fkey(id, email, name, full_name),
+          to_user:profiles!transactions_to_user_id_profiles_fkey(id, email, name, full_name)
+        `
+        )
         .eq('room_id', roomId)
         .order('created_at', { ascending: false });
 
@@ -173,16 +189,23 @@ export function useSummary(roomId?: string) {
       if (format === 'csv') {
         const csvContent = [
           'Date,Type,Amount,Description,From,To,Status',
-          ...transactions.map(t => 
-            `${new Date(t.created_at).toLocaleDateString()},${t.type},$${t.amount},${t.description},${t.from_user?.email},${t.to_user?.email},${t.status}`
-          )
+          ...transactions.map(
+            (t) =>
+              `${new Date(t.created_at).toLocaleDateString()},${t.type},$${
+                t.amount
+              },${t.description},${t.from_user?.email},${t.to_user?.email},${
+                t.status
+              }`
+          ),
         ].join('\n');
 
         const blob = new Blob([csvContent], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `transactions_${new Date().toISOString().split('T')[0]}.csv`;
+        a.download = `transactions_${
+          new Date().toISOString().split('T')[0]
+        }.csv`;
         a.click();
         URL.revokeObjectURL(url);
       }
@@ -201,12 +224,13 @@ export function useSummary(roomId?: string) {
       // Set up real-time subscription
       const subscription = supabase
         .channel(`summary_${roomId}`)
-        .on('postgres_changes',
-          { 
-            event: '*', 
-            schema: 'public', 
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
             table: 'transactions',
-            filter: `room_id=eq.${roomId}`
+            filter: `room_id=eq.${roomId}`,
           },
           () => calculateSummary()
         )

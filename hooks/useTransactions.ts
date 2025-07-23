@@ -27,45 +27,69 @@ export function useTransactions(roomId?: string) {
     if (!user || !roomId) return;
 
     // Try to get cached transactions first
-    const cachedTransactions = await localStorage.getItem(`transactions_${roomId}`);
+    const cachedTransactions = await localStorage.getItem(
+      `transactions_${roomId}`
+    );
     if (cachedTransactions) {
       setTransactions(cachedTransactions);
     }
 
     setLoading(true);
     try {
+      // First verify user has access to this room
+      const { data: roomAccess, error: roomError } = await supabase
+        .from('room_members')
+        .select('user_id')
+        .eq('room_id', roomId)
+        .eq('user_id', user.id)
+        .single();
+
+      if (roomError || !roomAccess) {
+        console.log('User does not have access to this room');
+        setTransactions([]);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('transactions')
-        .select(`
+        .select(
+          `
           *,
-          from_user:from_user_id(email, raw_user_meta_data),
-          to_user:to_user_id(email, raw_user_meta_data)
-        `)
+          from_user:profiles!transactions_from_user_id_profiles_fkey(id, email, name, full_name),
+          to_user:profiles!transactions_to_user_id_profiles_fkey(id, email, name, full_name)
+        `
+        )
         .eq('room_id', roomId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      const formattedTransactions = data.map(transaction => ({
+      const formattedTransactions = data.map((transaction) => ({
         ...transaction,
         from_user: {
-          name: transaction.from_user?.raw_user_meta_data?.name || 
-                transaction.from_user?.raw_user_meta_data?.full_name || 
-                'Unknown User',
+          name:
+            transaction.from_user?.name ||
+            transaction.from_user?.full_name ||
+            'Unknown User',
           email: transaction.from_user?.email || 'unknown@email.com',
         },
         to_user: {
-          name: transaction.to_user?.raw_user_meta_data?.name || 
-                transaction.to_user?.raw_user_meta_data?.full_name || 
-                'Unknown User',
+          name:
+            transaction.to_user?.name ||
+            transaction.to_user?.full_name ||
+            'Unknown User',
           email: transaction.to_user?.email || 'unknown@email.com',
         },
       }));
 
       setTransactions(formattedTransactions);
-      
+
       // Cache the transactions data
-      await localStorage.setItem(`transactions_${roomId}`, formattedTransactions, true);
+      await localStorage.setItem(
+        `transactions_${roomId}`,
+        formattedTransactions,
+        true
+      );
     } catch (error) {
       console.error('Error fetching transactions:', error);
       // If online fetch fails, keep cached data
@@ -80,20 +104,19 @@ export function useTransactions(roomId?: string) {
     description: string;
     target_user_id: string;
   }) => {
-    if (!user || !roomId) throw new Error('User not authenticated or room not selected');
+    if (!user || !roomId)
+      throw new Error('User not authenticated or room not selected');
 
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from('transactions')
-        .insert({
-          room_id: roomId,
-          amount: transactionData.amount,
-          type: transactionData.type,
-          description: transactionData.description,
-          from_user_id: user.id,
-          to_user_id: transactionData.target_user_id,
-        });
+      const { error } = await supabase.from('transactions').insert({
+        room_id: roomId,
+        amount: transactionData.amount,
+        type: transactionData.type,
+        description: transactionData.description,
+        from_user_id: user.id,
+        to_user_id: transactionData.target_user_id,
+      });
 
       if (error) throw error;
 
@@ -129,7 +152,8 @@ export function useTransactions(roomId?: string) {
   };
 
   const settleAllTransactions = async (targetUserId?: string) => {
-    if (!user || !roomId) throw new Error('User not authenticated or room not selected');
+    if (!user || !roomId)
+      throw new Error('User not authenticated or room not selected');
 
     setLoading(true);
     try {
@@ -143,8 +167,9 @@ export function useTransactions(roomId?: string) {
         .eq('status', 'pending');
 
       if (targetUserId) {
-        query = query.or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`)
-                    .or(`from_user_id.eq.${targetUserId},to_user_id.eq.${targetUserId}`);
+        query = query
+          .or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`)
+          .or(`from_user_id.eq.${targetUserId},to_user_id.eq.${targetUserId}`);
       } else {
         query = query.or(`from_user_id.eq.${user.id},to_user_id.eq.${user.id}`);
       }
@@ -169,12 +194,13 @@ export function useTransactions(roomId?: string) {
       // Set up real-time subscription for transactions
       const subscription = supabase
         .channel(`transactions_${roomId}`)
-        .on('postgres_changes',
-          { 
-            event: '*', 
-            schema: 'public', 
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
             table: 'transactions',
-            filter: `room_id=eq.${roomId}`
+            filter: `room_id=eq.${roomId}`,
           },
           () => fetchTransactions()
         )
