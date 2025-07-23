@@ -79,13 +79,30 @@ export default function TransactionsScreen() {
     }
   };
 
-  const handleMarkAsPaid = (transactionId: string) => {
+  const handleMarkAsPaid = async (transactionId: string) => {
+    console.log('=== TRANSACTIONS TAB: handleMarkAsPaid called ===');
+    console.log('Transaction ID:', transactionId);
+
     Alert.alert(
       'Mark as Paid',
-      'Are you sure you want to mark this transaction as settled?',
+      'Are you sure you want to delete this transaction?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Mark Paid', onPress: () => markAsPaid(transactionId) },
+        {
+          text: 'Delete Transaction',
+          onPress: async () => {
+            try {
+              console.log('=== TRANSACTIONS TAB: Calling markAsPaid ===');
+              await markAsPaid(transactionId);
+              console.log('=== TRANSACTIONS TAB: markAsPaid completed ===');
+              Alert.alert('Success', 'Transaction deleted successfully');
+            } catch (error) {
+              console.error('=== TRANSACTIONS TAB: markAsPaid failed ===');
+              console.error('Error:', error);
+              Alert.alert('Error', 'Failed to delete transaction');
+            }
+          },
+        },
       ]
     );
   };

@@ -104,22 +104,30 @@ export default function RoomScreen() {
   };
 
   const handleMarkAsPaid = async (transactionId: string) => {
+    console.log('=== UI: handleMarkAsPaid called ===');
+    console.log('Transaction ID:', transactionId);
+
     Alert.alert(
       'Mark as Paid',
-      'Are you sure you want to mark this transaction as settled?',
+      'Are you sure you want to delete this transaction?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Mark Paid',
+          text: 'Delete Transaction',
           onPress: async () => {
             try {
+              console.log('=== UI: Calling markAsPaid function ===');
               await markAsPaid(transactionId);
-              Alert.alert('Success', 'Transaction marked as paid');
+              console.log('=== UI: markAsPaid completed successfully ===');
+              Alert.alert('Success', 'Transaction deleted successfully');
             } catch (error) {
+              console.error('=== UI: markAsPaid failed ===');
               console.error('Failed to mark as paid:', error);
               Alert.alert(
                 'Error',
-                'Failed to mark transaction as paid. Please try again.'
+                `Failed to delete transaction: ${
+                  (error as any)?.message || 'Unknown error'
+                }`
               );
             }
           },

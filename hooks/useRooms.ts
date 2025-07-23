@@ -254,7 +254,25 @@ export function useRooms() {
 
     setLoading(true);
     try {
-      console.log('Deleting room:', roomId, 'by user:', user.id);
+      console.log('=== DELETE ROOM START ===');
+      console.log('Room ID:', roomId);
+      console.log('User ID:', user.id);
+      console.log('User email:', user.email);
+
+      // First verify the room exists and user is creator
+      const { data: existingRoom, error: fetchError } = await supabase
+        .from('rooms')
+        .select('*')
+        .eq('id', roomId)
+        .single();
+
+      if (fetchError) {
+        console.error('Error fetching room:', fetchError);
+        throw fetchError;
+      }
+
+      console.log('Existing room:', existingRoom);
+      console.log('User is creator?', existingRoom.created_by === user.id);
 
       // Since we have CASCADE DELETE foreign keys set up,
       // we can just delete the room and let the database handle the rest
@@ -267,15 +285,18 @@ export function useRooms() {
         .single();
 
       if (error) {
-        console.error('Supabase error deleting room:', error);
+        console.error('Supabase DELETE room error:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
         throw error;
       }
 
       console.log('Room deleted successfully:', data);
+      console.log('=== DELETE ROOM SUCCESS ===');
 
       // Refresh the rooms list
       await fetchRooms();
     } catch (error) {
+      console.error('=== DELETE ROOM ERROR ===');
       console.error('Error deleting room:', error);
       throw error;
     } finally {

@@ -172,13 +172,31 @@ export function useTransactions(roomId?: string) {
 
     setLoading(true);
     try {
+      console.log('=== MARK AS PAID START ===');
+      console.log('Transaction ID:', transactionId);
+      console.log('User ID:', user.id);
+      console.log('User email:', user.email);
+
+      // First, let's verify the transaction exists and user has permission
+      const { data: existingTransaction, error: fetchError } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('id', transactionId)
+        .single();
+
+      if (fetchError) {
+        console.error('Error fetching transaction:', fetchError);
+        throw fetchError;
+      }
+
+      console.log('Existing transaction:', existingTransaction);
       console.log(
-        'Deleting transaction (marking as paid):',
-        transactionId,
-        'by user:',
-        user.id
+        'User can modify?',
+        existingTransaction.from_user_id === user.id ||
+          existingTransaction.to_user_id === user.id
       );
 
+      // Now delete the transaction
       const { data, error } = await supabase
         .from('transactions')
         .delete()
@@ -187,13 +205,17 @@ export function useTransactions(roomId?: string) {
         .single();
 
       if (error) {
-        console.error('Supabase error:', error);
+        console.error('Supabase DELETE error:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
         throw error;
       }
 
       console.log('Transaction deleted successfully:', data);
+      console.log('=== MARK AS PAID SUCCESS ===');
+
       await fetchTransactions();
     } catch (error) {
+      console.error('=== MARK AS PAID ERROR ===');
       console.error('Error marking transaction as paid:', error);
       throw error;
     } finally {
